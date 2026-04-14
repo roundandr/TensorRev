@@ -74,3 +74,63 @@ The script will:
 2. map that GPU to a TensorRev architecture
 3. fall back to `Ampere` qualifiers automatically when the detected GPU would require F8 support but `make f8` has not been run
 4. run all enabled experiments for each qualifier
+
+## Example Results: NVIDIA Blackwell
+
+The following results were collected on:
+
+- GPU: `NVIDIA Thor`
+- Compute capability: `11.0`
+
+### Accumulation Precision and Rounding
+
+| Qualifier | Accumulation Precision | Rounding Mode |
+| --- | --- | --- |
+| `m16n16k16.f32.f16.f16.f32` | `25` fraction bits | `RZ` |
+| `m16n16k16.f32.tf32.tf32.f32` | `25` fraction bits | `RZ` |
+| `m16n16k16.f32.bf16.bf16.f32` | `25` fraction bits | `RZ` |
+| `m16n8k32.f32.e5m2.e5m2.f32` | `25` fraction bits | `RZ` |
+| `m16n8k32.f32.e5m2.e4m3.f32` | `25` fraction bits | `RZ` |
+| `m16n8k32.f32.e4m3.e5m2.f32` | `25` fraction bits | `RZ` |
+| `m16n8k32.f32.e4m3.e4m3.f32` | `25` fraction bits | `RZ` |
+
+### Subnormal Behavior
+
+| Qualifier | `-0` | Subnormal C | Subnormal A | Subnormal B | Subnormal After Multiply | Subnormal After Add |
+| --- | --- | --- | --- | --- | --- | --- |
+| `m16n16k16.f32.f16.f16.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n16k16.f32.tf32.tf32.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n16k16.f32.bf16.bf16.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e5m2.e5m2.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e5m2.e4m3.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e4m3.e5m2.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e4m3.e4m3.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+### Overflow and NaN Behavior
+
+| Qualifier | Overflow After Multiply | Overflow After Add | Overflow Edge Case | `+inf` from C | `-inf` from C | NaN A | NaN B | NaN `0 * inf` | NaN `-inf + inf` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `m16n16k16.f32.f16.f16.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n16k16.f32.tf32.tf32.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n16k16.f32.bf16.bf16.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e5m2.e5m2.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `m16n8k32.f32.e5m2.e4m3.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| `m16n8k32.f32.e4m3.e5m2.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| `m16n8k32.f32.e4m3.e4m3.f32` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+
+### Notes on Interpretation
+
+Accumulation precision here refers to the number of fraction bits only. It does not include the hidden bit, carry bit, or sign bit.
+
+The accumulation-precision test uses:
+
+```text
+-1 + 1 + 2^t
+```
+
+starting from `t = 0` and increasing `t` until the output first deviates. The reported accumulation precision is then `t - 1`.
+
+`e4m3` does not support `inf`, so the following cases are not applicable for `e4m3` inputs:
+
+- `NaN from 0 * inf`
+- `NaN from -inf + inf`
