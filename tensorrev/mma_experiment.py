@@ -1,6 +1,6 @@
 import torch
 from typing import Iterable, Sequence
-from common import (
+from .common import (
     BITS_VIEW_MAPPING,
     FLOAT_DTYPE_SPECS,
     arch_mma_qualifiers,

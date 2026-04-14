@@ -23,12 +23,13 @@ Optional for FP8 experiments:
 
 ## Repository Layout
 
-- [experiment_impl.py](./experiment_impl.py): top-level experiment entrypoint
-- [mma_experiment.py](./mma_experiment.py): common MMA execution wrapper
-- [accum_precision.py](./accum_precision.py): accumulation-precision detection
-- [rounding.py](./rounding.py): rounding-mode detection
-- [special_value.py](./special_value.py): special-value detection
-- [common.py](./common.py): qualifier tables and dtype metadata
+- [tensorrev/](./tensorrev): consolidated Python source directory
+- [run.py](./run.py): top-level launcher script
+- [tensorrev/mma_experiment.py](./tensorrev/mma_experiment.py): common MMA execution wrapper
+- [tensorrev/accum_precision.py](./tensorrev/accum_precision.py): accumulation-precision detection
+- [tensorrev/rounding.py](./tensorrev/rounding.py): rounding-mode detection
+- [tensorrev/special_value.py](./tensorrev/special_value.py): special-value detection
+- [tensorrev/common.py](./tensorrev/common.py): qualifier tables and dtype metadata
 - [hw/](./hw): CUDA extension build logic and kernels
 
 ## Build
@@ -60,12 +61,14 @@ make f8
 - `CUTLASS_DIR` is configured correctly
 - the target GPU architecture is at least `sm_90`
 
+For F8 builds, TensorRev automatically promotes plain architecture targets such as `90`, `100`, and `110` to `90a`, `100a`, and `110a` in the generated `nvcc` `-gencode` flag. If you already specify an `a`-suffixed target explicitly, it is preserved as-is.
+
 ## Run
 
 Run the experiment suite from the repository root:
 
 ```bash
-python experiment_impl.py
+python run.py
 ```
 
 The script will:

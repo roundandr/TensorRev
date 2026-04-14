@@ -1,5 +1,5 @@
 import torch
-from mma_experiment import MmaExperiment
+from .mma_experiment import MmaExperiment
 
 
 class SpecialValueExperiment(MmaExperiment):

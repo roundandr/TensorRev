@@ -108,7 +108,7 @@ def _check_f8_support() -> str:
     cuda_arch = _resolve_cuda_arch()
     _assert_wmma_arch_supported(cuda_arch)
     _assert_f8_arch_supported(cuda_arch)
-    return cuda_arch
+    return _resolve_f8_cuda_arch(cuda_arch)
 
 
 def _handle_custom_cli() -> None:
@@ -134,19 +134,29 @@ def _resolve_f8_kernel_arch(cuda_arch: str) -> int:
     return 90
 
 
+def _resolve_f8_cuda_arch(cuda_arch: str) -> str:
+    if cuda_arch.endswith("a"):
+        return cuda_arch
+    return f"{cuda_arch}a"
+
+
 def _build_common_nvcc_flags() -> list[str]:
     cuda_arch = _resolve_cuda_arch()
     _assert_wmma_arch_supported(cuda_arch)
+    build_cutlass_gemm_f8 = _parse_bool_env("TENSORREV_BUILD_CUTLASS_GEMM_F8", False)
+    nvcc_arch = cuda_arch
+    if build_cutlass_gemm_f8:
+        _assert_f8_arch_supported(cuda_arch)
+        nvcc_arch = _resolve_f8_cuda_arch(cuda_arch)
+
     flags = [
         "-O2",
         "-std=c++17",
         "--expt-relaxed-constexpr",
-        f"-gencode=arch=compute_{cuda_arch},code=sm_{cuda_arch}",
+        f"-gencode=arch=compute_{nvcc_arch},code=sm_{nvcc_arch}",
     ]
 
-    build_cutlass_gemm_f8 = _parse_bool_env("TENSORREV_BUILD_CUTLASS_GEMM_F8", False)
     if build_cutlass_gemm_f8:
-        _assert_f8_arch_supported(cuda_arch)
         cutlass_dir = _resolve_cutlass_dir()
         flags.extend(
             [

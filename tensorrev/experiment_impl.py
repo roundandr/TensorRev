@@ -1,10 +1,8 @@
-import importlib.util
-
 import torch
-from accum_precision import AccumPrecisionExperiment
-from rounding import RoundingExperiment
-from special_value import SpecialValueExperiment
-from common import arch_mma_qualifiers, resolve_experiment_arch
+from .accum_precision import AccumPrecisionExperiment
+from .rounding import RoundingExperiment
+from .special_value import SpecialValueExperiment
+from .common import arch_mma_qualifiers, resolve_experiment_arch
 
 class ExperimentImpl:
     def __init__(self, arch: str, qualifier: str) -> None:
@@ -29,7 +27,7 @@ class ExperimentImpl:
         self.special_value_experiment.detect()
 
 
-if __name__ == "__main__":
+def main() -> None:
     device = torch.cuda.current_device()
     name = torch.cuda.get_device_name(device)
     major, minor = torch.cuda.get_device_capability(device)
@@ -62,4 +60,6 @@ if __name__ == "__main__":
         print(f"finished: {title}")
         print("-" * 120 + "\n")
 
-    
+
+if __name__ == "__main__":
+    main()

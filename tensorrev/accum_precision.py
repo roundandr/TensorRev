@@ -1,6 +1,6 @@
 import torch
-from common import ACCUM_PRECISION_TEST_MODE
-from mma_experiment import MmaExperiment
+from .common import ACCUM_PRECISION_TEST_MODE
+from .mma_experiment import MmaExperiment
 
 class AccumPrecisionExperiment(MmaExperiment):
     def __init__(self, arch: str, qualifier: str) -> None:
