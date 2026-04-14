@@ -25,42 +25,15 @@ blackwell_mma_qualifiers = [
     # "m16n8k32.f32.e2m1.e2m1.f32",
 ]
 
-
-arch_mma_qualifiers = {
-    "Blackwell": blackwell_mma_qualifiers,
-}
-
 arch_mma_qualifiers = {
     "Volta": volta_mma_qualifiers,
-    "Ampere": ampere_mma_qualifiers + volta_mma_qualifiers,
-    "Hopper": hopper_mma_qualifiers + ampere_mma_qualifiers + volta_mma_qualifiers,
-    "Blackwell": blackwell_mma_qualifiers + 
-                    hopper_mma_qualifiers + 
-                    ampere_mma_qualifiers + 
-                     volta_mma_qualifiers ,
+    "Ampere": volta_mma_qualifiers + ampere_mma_qualifiers ,
+    "Hopper": volta_mma_qualifiers + ampere_mma_qualifiers + hopper_mma_qualifiers,
+    "Blackwell": volta_mma_qualifiers + 
+                ampere_mma_qualifiers + 
+                hopper_mma_qualifiers + 
+                blackwell_mma_qualifiers,
 }
-
-
-def resolve_cuda_arch_name(device: int | None = None) -> str:
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is not available")
-
-    if device is None:
-        device = torch.cuda.current_device()
-
-    major, minor = torch.cuda.get_device_capability(device)
-    capability = major * 10 + minor
-
-    if capability >= 100:
-        return "Blackwell"
-    if capability >= 90:
-        return "Hopper"
-    if capability >= 80:
-        return "Ampere"
-    if capability >= 70:
-        return "Volta"
-
-    raise RuntimeError(f"Unsupported CUDA compute capability: {major}.{minor}")
 
 FLOAT_DTYPE_SPECS = {
     "f64": {"frac_bits": 52, "exp_bits": 11, "min_exp": -1074, "max_exp": 1023},
@@ -101,6 +74,35 @@ def nv_shape_to_mnk(shape: str) -> tuple[int, int, int]:
     m, nk = mnk.split("n")
     n, k = nk.split("k")
     return int(m), int(n), int(k)
+
+def resolve_cuda_arch_name(device: int | None = None) -> str:
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available")
+
+    if device is None:
+        device = torch.cuda.current_device()
+
+    major, minor = torch.cuda.get_device_capability(device)
+    capability = major * 10 + minor
+
+    if capability >= 100:
+        return "Blackwell"
+    if capability >= 90:
+        return "Hopper"
+    if capability >= 80:
+        return "Ampere"
+    if capability >= 70:
+        return "Volta"
+
+    raise RuntimeError(f"Unsupported CUDA compute capability: {major}.{minor}")
+
+def resolve_experiment_arch(device: int) -> tuple[str, str | None]:
+    detected_arch = resolve_cuda_arch_name(device)
+    if detected_arch not in {"Hopper", "Blackwell"}:
+        return detected_arch, None
+    if importlib.util.find_spec("hw.nv_mma") is not None:
+        return detected_arch, None
+    return detected_arch, "Ampere"
 
 # Mode0: 1 - 1 + 2^t
 # Mode1: min(subnormal)^2 + min(subnormal) * 2^t

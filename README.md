@@ -41,6 +41,7 @@ make
 
 This builds the non-F8 extension path.
 Before compiling, the build checks that the target GPU architecture is at least `sm_80`, because `wmma_f16bf16tf32` requires `sm_80+`.
+If you run on Hopper or Blackwell without building the F8 extension, the experiment driver will automatically fall back to Ampere qualifiers.
 
 Optional FP8 build:
 
@@ -71,6 +72,5 @@ The script will:
 
 1. detect the current GPU name and compute capability
 2. map that GPU to a TensorRev architecture
-3. select the corresponding `arch_mma_qualifiers`
+3. fall back to `Ampere` qualifiers automatically when the detected GPU would require F8 support but `make f8` has not been run
 4. run all enabled experiments for each qualifier
-
