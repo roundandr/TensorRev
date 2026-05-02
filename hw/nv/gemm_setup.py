@@ -4,12 +4,11 @@ import sys
 from pathlib import Path
 
 from setuptools import setup
-import torch
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 
 ROOT = Path(__file__).resolve().parent
-WMMA_MINIMUM_ARCH = 80
+WMMA_MINIMUM_ARCH = 70
+WMMA_AMPERE_MINIMUM_ARCH = 80
 F8_MINIMUM_ARCH = 90
 
 
@@ -24,6 +23,12 @@ def _parse_bool_env(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"Invalid boolean value for {name}: {value}")
+
+
+def _load_torch():
+    import torch
+
+    return torch
 
 
 def _normalize_cuda_arch(raw_arch: str) -> str:
@@ -49,6 +54,7 @@ def _resolve_cuda_arch() -> str:
     if configured_arch.strip().lower() != "auto":
         return _normalize_cuda_arch(configured_arch)
 
+    torch = _load_torch()
     if not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA arch detection requires an available CUDA device. "
@@ -93,9 +99,20 @@ def _assert_wmma_arch_supported(cuda_arch: str) -> None:
     arch_number = _extract_arch_number(cuda_arch)
     if arch_number < WMMA_MINIMUM_ARCH:
         raise RuntimeError(
-            "wmma_f16bf16tf32 requires CUDA arch >= 80. "
-            f"Resolved arch: {cuda_arch}."
+            "nv_wmma requires CUDA arch >= 70. "
+            f"Resolved arch: {cuda_arch}. "
+            "sm70/sm75 builds include only FP16 WMMA; sm80+ builds add BF16 and TF32."
         )
+
+
+def _supports_wmma_ampere(cuda_arch: str) -> bool:
+    return _extract_arch_number(cuda_arch) >= WMMA_AMPERE_MINIMUM_ARCH
+
+
+def _describe_wmma_build(cuda_arch: str) -> str:
+    if _supports_wmma_ampere(cuda_arch):
+        return "FP16/BF16/TF32"
+    return "FP16-only"
 
 
 def _check_wmma_support() -> str:
@@ -115,7 +132,10 @@ def _handle_custom_cli() -> None:
     if "--check-wmma-support" in sys.argv:
         sys.argv.remove("--check-wmma-support")
         cuda_arch = _check_wmma_support()
-        print(f"WMMA build is supported for CUDA arch {cuda_arch}.")
+        print(
+            f"WMMA build is supported for CUDA arch {cuda_arch} "
+            f"({_describe_wmma_build(cuda_arch)})."
+        )
         raise SystemExit(0)
 
     if "--check-f8-support" not in sys.argv:
@@ -168,19 +188,36 @@ def _build_common_nvcc_flags() -> list[str]:
     return flags
 
 
+def _build_wmma_sources(cuda_arch: str) -> list[str]:
+    sources = [
+        ROOT / "wmma_f16.cu",
+    ]
+    if _supports_wmma_ampere(cuda_arch):
+        sources.append(ROOT / "wmma_bf16tf32.cu")
+    return [str(source) for source in sources]
+
+
+def _build_wmma_define(cuda_arch: str) -> str:
+    enabled = int(_supports_wmma_ampere(cuda_arch))
+    return f"-DTENSORREV_ENABLE_WMMA_AMPERE={enabled}"
+
+
 _handle_custom_cli()
+
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 COMMON_NVCC_FLAGS = _build_common_nvcc_flags()
 BUILD_CUTLASS_GEMM_F8 = _parse_bool_env("TENSORREV_BUILD_CUTLASS_GEMM_F8", False)
 CUDA_ARCH = _resolve_cuda_arch()
+WMMA_DEFINE = _build_wmma_define(CUDA_ARCH)
 
 ext_modules = [
     CUDAExtension(
         name="nv_wmma",
-        sources=[str(ROOT / "wmma_f16bf16tf32.cu")],
+        sources=_build_wmma_sources(CUDA_ARCH),
         extra_compile_args={
-            "cxx": ["-O2", "-std=c++17"],
-            "nvcc": COMMON_NVCC_FLAGS,
+            "cxx": ["-O2", "-std=c++17", WMMA_DEFINE],
+            "nvcc": COMMON_NVCC_FLAGS + [WMMA_DEFINE],
         },
     ),
 ]

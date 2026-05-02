@@ -14,7 +14,7 @@ The experiment driver selects the TensorRev architecture automatically from the 
 - CUDA-capable NVIDIA GPU
 - A working CUDA toolchain for building the extensions
 - GNU Make
-- GPU architecture `sm_80` or newer for the default WMMA build
+- GPU architecture `sm_70` or newer for the default WMMA build
 
 Optional for FP8 experiments:
 
@@ -41,7 +41,8 @@ make
 ```
 
 This builds the non-F8 extension path.
-Before compiling, the build checks that the target GPU architecture is at least `sm_80`, because `wmma_f16bf16tf32` requires `sm_80+`.
+Before compiling, the build checks that the target GPU architecture is at least `sm_70`.
+For `sm_70`/`sm_75`, the WMMA extension builds only the FP16 path; for `sm_80+`, it also builds BF16 and TF32 paths.
 If you run on Hopper or Blackwell without building the F8 extension, the experiment driver will automatically fall back to Ampere qualifiers.
 
 Optional FP8 build:
@@ -57,7 +58,7 @@ make f8
 
 `make f8` checks that:
 
-- the target GPU architecture is at least `sm_80` for the WMMA extension
+- the target GPU architecture is at least `sm_70` for the WMMA extension
 - `CUTLASS_DIR` is configured correctly
 - the target GPU architecture is at least `sm_90`
 

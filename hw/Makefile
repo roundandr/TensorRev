@@ -26,7 +26,7 @@ prepare_default_artifacts:
 	rm -f $(ROOT)nv_mma*.so
 
 ensure_wmma_support:
-	@echo "Checking CUDA arch support for nv_wmma (requires sm80+)..."
+	@echo "Checking CUDA arch support for nv_wmma (requires sm70+; BF16/TF32 require sm80+)..."
 	@$(NV_BUILD_ENV) $(PYTHON) $(NV_SETUP) --check-wmma-support
 
 ensure_cutlass_dir:
