@@ -31,6 +31,7 @@ Optional for FP8 experiments:
 - [tensorrev/special_value.py](./tensorrev/special_value.py): special-value detection
 - [tensorrev/common.py](./tensorrev/common.py): qualifier tables and dtype metadata
 - [hw/](./hw): CUDA extension build logic and kernels
+- Backend extension guide: [extension.md](./extension.md)
 
 ## Build
 
