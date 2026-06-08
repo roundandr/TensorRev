@@ -1,17 +1,17 @@
 # TensorRev
 
-TensorRev is a small CUDA/PyTorch experiment suite for probing MMA behavior on NVIDIA GPUs. It currently focuses on three categories of behavior:
+TensorRev is a small CUDA/PyTorch experiment suite for probing MMA behavior on NVIDIA GPUs and prototype CUDA-compatible vendor backends. It currently focuses on three categories of behavior:
 
 - accumulation precision
 - rounding behavior
 - special-value handling
 
-The experiment driver selects the TensorRev architecture automatically from the current GPU compute capability and runs the supported MMA qualifiers for that architecture.
+The experiment driver selects the TensorRev backend and architecture automatically from the current GPU and runs the supported MMA qualifiers for that target.
 
 ## Requirements
 
 - Python with `torch` installed
-- CUDA-capable NVIDIA GPU
+- CUDA-capable NVIDIA GPU, or a compatible backend supported by TensorRev
 - A working CUDA toolchain for building the extensions
 - GNU Make
 - GPU architecture `sm_70` or newer for the default WMMA build
@@ -40,7 +40,7 @@ Default build:
 make
 ```
 
-This builds the non-F8 extension path.
+This builds the default NVIDIA non-F8 extension path.
 Before compiling, the build checks that the target GPU architecture is at least `sm_70`.
 For `sm_70`/`sm_75`, the WMMA extension builds only the FP16 path; for `sm_80+`, it also builds BF16 and TF32 paths.
 If you run on Hopper or Blackwell without building the F8 extension, the experiment driver will automatically fall back to Ampere qualifiers.
@@ -64,6 +64,14 @@ make f8
 
 For F8 builds, TensorRev automatically promotes plain architecture targets such as `90`, `100`, and `110` to `90a`, `100a`, and `110a` in the generated `nvcc` `-gencode` flag. If you already specify an `a`-suffixed target explicitly, it is preserved as-is.
 
+Prototype MX backend build:
+
+```bash
+make mx
+```
+
+The MX backend can also be JIT-compiled on first use from the checked-out `hw/mx` sources when `TENSORREV_BACKEND=mx` is selected and the extension has not been built in place.
+
 ## Run
 
 Run the experiment suite from the repository root:
@@ -72,12 +80,21 @@ Run the experiment suite from the repository root:
 python run.py
 ```
 
+Backend selection is controlled with `TENSORREV_BACKEND=auto|nv|mx`.
+The default is `auto`: NVIDIA devices use the NV backend, and non-NVIDIA devices use the prototype MX backend.
+You can force the prototype MX path with:
+
+```bash
+TENSORREV_BACKEND=mx python run.py
+```
+
 The script will:
 
 1. detect the current GPU name and compute capability
-2. map that GPU to a TensorRev architecture
-3. fall back to `Ampere` qualifiers automatically when the detected GPU would require F8 support but `make f8` has not been run
-4. run all enabled experiments for each qualifier
+2. select the TensorRev backend
+3. map that GPU/backend to a TensorRev architecture
+4. fall back to `Ampere` qualifiers automatically when the detected NVIDIA GPU would require F8 support but `make f8` has not been run
+5. run all enabled experiments for each qualifier
 
 ## Example Results: NVIDIA Blackwell
 

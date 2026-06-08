@@ -1,5 +1,6 @@
 import torch
-from typing import Iterable, Sequence
+from typing import Iterable
+from .backend import get_mma_function
 from .common import (
     BITS_VIEW_MAPPING,
     FLOAT_DTYPE_SPECS,
@@ -9,7 +10,7 @@ from .common import (
 )
 
 class MmaExperiment:
-    def __init__(self, arch: str, qualifier: str) -> None:
+    def __init__(self, arch: str, qualifier: str, backend: str = "nv") -> None:
         assert arch in arch_mma_qualifiers.keys(), (
             f"Unsupported architecture {arch} for mma.\n"
             f"Supported architectures: {list(arch_mma_qualifiers.keys())}"
@@ -22,6 +23,7 @@ class MmaExperiment:
         shape, d_type, a_type, b_type, c_type = qualifier.split(".")
 
         self.arch = arch
+        self.backend = backend
         self.qualifier = qualifier
         self.a_type = a_type
         self.b_type = b_type
@@ -50,14 +52,7 @@ class MmaExperiment:
         self.ref.zero_()
 
     def run(self) -> None:
-        if self.A.dtype in (torch.float16, torch.bfloat16, torch.float32):
-            from hw import nv_wmma
-            fn = nv_wmma.mma_f16bf16tf32
-        elif self.A.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-            from hw import nv_mma
-            fn = nv_mma.cutlass_gemm_f8
-        else:
-            raise ValueError(f"Unsupported data type {self.A.dtype} for MMA operation.")
+        fn = get_mma_function(self.backend, self.A.dtype)
         self.D = fn(self.A, self.B.t().contiguous(), self.C)
 
     def match(

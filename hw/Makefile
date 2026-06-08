@@ -3,11 +3,12 @@ PROJECT_ROOT := $(abspath $(ROOT)..)
 include $(PROJECT_ROOT)/build_config.mk
 
 NV_SETUP := $(ROOT)nv/gemm_setup.py
+MX_SETUP := $(ROOT)mx/gemm_setup.py
 NV_BUILD_ENV := \
 	TENSORREV_CUTLASS_DIR="$(CUTLASS_DIR)" \
 	TENSORREV_CUDA_ARCH="$(CUDA_ARCH)"
 
-.PHONY: all nv f8 nv/gemm_setup nv/gemm_setup_f8 \
+.PHONY: all nv f8 mx nv/gemm_setup nv/gemm_setup_f8 mx/gemm_setup \
 	prepare_default_artifacts ensure_wmma_support ensure_cutlass_dir ensure_f8_support clean
 
 all: nv
@@ -16,14 +17,22 @@ nv: nv/gemm_setup
 
 f8: nv/gemm_setup_f8
 
+mx: mx/gemm_setup
+
 nv/gemm_setup: prepare_default_artifacts ensure_wmma_support
 	$(NV_BUILD_ENV) TENSORREV_BUILD_CUTLASS_GEMM_F8="0" $(PYTHON) $(NV_SETUP) build_ext --inplace
 
 nv/gemm_setup_f8: ensure_cutlass_dir ensure_f8_support
 	$(NV_BUILD_ENV) TENSORREV_BUILD_CUTLASS_GEMM_F8="1" $(PYTHON) $(NV_SETUP) build_ext --inplace
 
+mx/gemm_setup: prepare_mx_artifacts
+	$(PYTHON) $(MX_SETUP) build_ext --inplace
+
 prepare_default_artifacts:
 	rm -f $(ROOT)nv_mma*.so
+
+prepare_mx_artifacts:
+	rm -f $(ROOT)mx_wmma*.so $(ROOT)mx_mma*.so
 
 ensure_wmma_support:
 	@echo "Checking CUDA arch support for nv_wmma (requires sm70+; BF16/TF32 require sm80+)..."

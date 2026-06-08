@@ -3,8 +3,8 @@ from .mma_experiment import MmaExperiment
 
 
 class RoundingExperiment(MmaExperiment):
-    def __init__(self, arch: str, qualifier: str) -> None:
-        super().__init__(arch=arch, qualifier=qualifier)
+    def __init__(self, arch: str, qualifier: str, backend: str = "nv") -> None:
+        super().__init__(arch=arch, qualifier=qualifier, backend=backend)
         self.a_min_norm_exp = self.a_min_exp + self.a_frac_bits
         self.b_min_norm_exp = self.b_min_exp + self.b_frac_bits
         self.sf = 1.0

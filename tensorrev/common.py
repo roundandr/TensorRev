@@ -17,6 +17,14 @@ hopper_mma_qualifiers = [
     "m16n8k32.f32.e4m3.e4m3.f32",
 ]
 
+mx_mma_qualifiers = [
+    "m16n16k16.f32.f16.f16.f32",
+    "m16n16k16.f32.tf32.tf32.f32",
+    "m16n16k16.f32.bf16.bf16.f32",
+    "m16n16k32.f32.e5m2.e5m2.f32",
+    "m16n16k32.f32.e4m3.e4m3.f32",
+]
+
 blackwell_mma_qualifiers = [
     #TODO：Support Blackwell fp4 
     # "m16n8k32.f32.e5m2.e2m1.f32",
@@ -34,6 +42,7 @@ arch_mma_qualifiers = {
                 ampere_mma_qualifiers + 
                 hopper_mma_qualifiers + 
                 blackwell_mma_qualifiers,
+    "MX": mx_mma_qualifiers,
 }
 
 FLOAT_DTYPE_SPECS = {
@@ -97,7 +106,10 @@ def resolve_cuda_arch_name(device: int | None = None) -> str:
 
     raise RuntimeError(f"Unsupported CUDA compute capability: {major}.{minor}")
 
-def resolve_experiment_arch(device: int) -> tuple[str, str | None]:
+def resolve_experiment_arch(device: int, backend: str = "nv") -> tuple[str, str | None]:
+    if backend == "mx":
+        return "MX", None
+
     detected_arch = resolve_cuda_arch_name(device)
     if detected_arch not in {"Hopper", "Blackwell"}:
         return detected_arch, None

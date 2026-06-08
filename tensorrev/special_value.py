@@ -3,8 +3,8 @@ from .mma_experiment import MmaExperiment
 
 
 class SpecialValueExperiment(MmaExperiment):
-    def __init__(self, arch: str, qualifier: str) -> None:
-        super().__init__(arch=arch, qualifier=qualifier)
+    def __init__(self, arch: str, qualifier: str, backend: str = "nv") -> None:
+        super().__init__(arch=arch, qualifier=qualifier, backend=backend)
         self.a_max = (2 - 2**(-self.a_frac_bits)) * 2**self.a_max_exp
         self.b_max = (2 - 2**(-self.b_frac_bits)) * 2**self.b_max_exp
 

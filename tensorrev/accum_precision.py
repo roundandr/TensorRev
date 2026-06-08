@@ -3,8 +3,8 @@ from .common import ACCUM_PRECISION_TEST_MODE
 from .mma_experiment import MmaExperiment
 
 class AccumPrecisionExperiment(MmaExperiment):
-    def __init__(self, arch: str, qualifier: str) -> None:
-        super().__init__(arch=arch, qualifier=qualifier)
+    def __init__(self, arch: str, qualifier: str, backend: str = "nv") -> None:
+        super().__init__(arch=arch, qualifier=qualifier, backend=backend)
         self.ref_f64 = 0.0
 
     def build_case(self, t: int) -> None:
