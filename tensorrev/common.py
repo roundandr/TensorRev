@@ -119,4 +119,4 @@ def resolve_experiment_arch(device: int, backend: str = "nv") -> tuple[str, str 
 
 # Mode0: 1 - 1 + 2^t
 # Mode1: min(subnormal)^2 + min(subnormal) * 2^t
-ACCUM_PRECISION_TEST_MODE = 0 
+ACCUM_PRECISION_TEST_MODE = 1
