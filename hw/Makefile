@@ -45,7 +45,7 @@ ensure_cutlass_dir:
 	fi
 
 ensure_f8_support:
-	@echo "Checking CUDA arch support for cutlass_gemm_f8 (requires sm90+)..."
+	@echo "Checking CUDA arch support for cutlass_gemm_f8 (requires sm89+; sm89 requires CUDA 12.4+)..."
 	@$(NV_BUILD_ENV) $(PYTHON) $(NV_SETUP) --check-f8-support
 
 clean:

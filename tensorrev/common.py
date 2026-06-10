@@ -29,6 +29,7 @@ blackwell_mma_qualifiers = [
 arch_mma_qualifiers = {
     "Volta": volta_mma_qualifiers,
     "Ampere": volta_mma_qualifiers + ampere_mma_qualifiers ,
+    "Ada": volta_mma_qualifiers + ampere_mma_qualifiers + hopper_mma_qualifiers,
     "Hopper": volta_mma_qualifiers + ampere_mma_qualifiers + hopper_mma_qualifiers,
     "Blackwell": volta_mma_qualifiers + 
                 ampere_mma_qualifiers + 
@@ -90,6 +91,8 @@ def resolve_cuda_arch_name(device: int | None = None) -> str:
         return "Blackwell"
     if capability >= 90:
         return "Hopper"
+    if capability >= 89:
+        return "Ada"
     if capability >= 80:
         return "Ampere"
     if capability >= 70:
@@ -99,7 +102,7 @@ def resolve_cuda_arch_name(device: int | None = None) -> str:
 
 def resolve_experiment_arch(device: int) -> tuple[str, str | None]:
     detected_arch = resolve_cuda_arch_name(device)
-    if detected_arch not in {"Hopper", "Blackwell"}:
+    if detected_arch not in {"Ada", "Hopper", "Blackwell"}:
         return detected_arch, None
     if importlib.util.find_spec("hw.nv_mma") is not None:
         return detected_arch, None

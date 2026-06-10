@@ -2,6 +2,15 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <cuda_runtime.h>
 
+#ifndef TENSORREV_F8_ARCH_NUMBER
+#define TENSORREV_F8_ARCH_NUMBER 90
+#endif
+
+#if TENSORREV_F8_ARCH_NUMBER == 89 && \
+    (__CUDACC_VER_MAJOR__ < 12 || (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ < 4))
+#error "sm89 FP8 builds require CUDA toolkit 12.4 or newer."
+#endif
+
 #include "cutlass/cutlass.h"
 #include "cutlass/layout/matrix.h"
 #include "cutlass/float8.h"
@@ -13,11 +22,17 @@
 #include "cutlass/util/packed_stride.hpp"
 #include "cute/tensor.hpp"
 
-#define CHECK_CUDA(x) TORCH_CHECK((x) == cudaSuccess, "CUDA error: ", cudaGetErrorString(x))
-
-#ifndef TENSORREV_F8_ARCH_NUMBER
-#define TENSORREV_F8_ARCH_NUMBER 90
+#if TENSORREV_F8_ARCH_NUMBER >= 120 && !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
+#error "sm120 FP8 builds require CUDA toolkit 12.8+ and CUTLASS with SM120 collective-builder support."
 #endif
+
+#if TENSORREV_F8_ARCH_NUMBER == 89
+#include "cutlass/epilogue/thread/activation.h"
+#include "cutlass/epilogue/thread/linear_combination_generic_with_scaling.h"
+#include "cutlass/gemm/device/gemm_universal_with_absmax.h"
+#endif
+
+#define CHECK_CUDA(x) TORCH_CHECK((x) == cudaSuccess, "CUDA error: ", cudaGetErrorString(x))
 
 template <typename T>
 struct TorchScalarType;
@@ -34,10 +49,15 @@ struct TorchScalarType<cutlass::float_e4m3_t> {
   static constexpr const char* name = "torch.float8_e4m3fn";
 };
 
-template <class ArchTag, typename ElementA, typename ElementB>
-torch::Tensor mma_f8_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
-  using namespace cute;
+struct F8GemmProblem {
+  int64_t M;
+  int64_t N;
+  int64_t K;
+  torch::Tensor D;
+};
 
+template <typename ElementA, typename ElementB>
+F8GemmProblem prepare_f8_gemm_problem(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
   TORCH_CHECK(A.is_cuda(), "A must be a CUDA tensor");
   TORCH_CHECK(B_col.is_cuda(), "B_col must be a CUDA tensor");
   TORCH_CHECK(C.is_cuda(), "C must be a CUDA tensor");
@@ -65,7 +85,18 @@ torch::Tensor mma_f8_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Ten
   TORCH_CHECK(B_col.is_contiguous(), "B_col must be contiguous");
   TORCH_CHECK(C.is_contiguous(), "C must be contiguous");
 
-  auto D = torch::zeros({M, N}, C.options());
+  return {M, N, K, torch::zeros({M, N}, C.options())};
+}
+
+template <class ArchTag, typename ElementA, typename ElementB>
+torch::Tensor mma_f8_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
+  using namespace cute;
+
+  auto problem = prepare_f8_gemm_problem<ElementA, ElementB>(A, B_col, C);
+  int64_t M = problem.M;
+  int64_t N = problem.N;
+  int64_t K = problem.K;
+  auto D = problem.D;
 
   using ElementC = float;
   using ElementD = float;
@@ -83,7 +114,10 @@ torch::Tensor mma_f8_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Ten
   static constexpr int AlignmentD = 128 / cutlass::sizeof_bits<ElementD>::value;
 
   using OpClass = cutlass::arch::OpClassTensorOp;
-  using MmaTileShape_MNK = Shape<_128, _128, _64>;
+  using MmaTileShape_MNK = cute::conditional_t<
+      (ArchTag::kMinComputeCapability >= 120),
+      Shape<_128, _128, _128>,
+      Shape<_128, _128, _64>>;
   using ClusterShape_MNK = Shape<_1, _1, _1>;
 
   using CollectiveEpilogue =
@@ -178,6 +212,142 @@ torch::Tensor mma_f8_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Ten
   return D;
 }
 
+#if TENSORREV_F8_ARCH_NUMBER == 89
+template <typename ElementA, typename ElementB>
+torch::Tensor mma_f8_ada_impl_typed(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
+  auto problem = prepare_f8_gemm_problem<ElementA, ElementB>(A, B_col, C);
+  int64_t M = problem.M;
+  int64_t N = problem.N;
+  int64_t K = problem.K;
+  auto D = problem.D;
+
+  using ElementC = float;
+  using ElementD = float;
+  using ElementAccumulator = float;
+  using ElementCompute = float;
+
+  using LayoutA = cutlass::layout::RowMajor;
+  using LayoutB = cutlass::layout::ColumnMajor;
+  using LayoutC = cutlass::layout::RowMajor;
+
+  static constexpr int AlignmentA = 128 / cutlass::sizeof_bits<ElementA>::value;
+  static constexpr int AlignmentB = 128 / cutlass::sizeof_bits<ElementB>::value;
+  static constexpr int ElementsPerAccessD = 128 / cutlass::sizeof_bits<ElementD>::value;
+
+  using EpilogueOutputOp =
+      cutlass::epilogue::thread::LinearCombinationGenericWithScalingAndAbsMax<
+          cutlass::epilogue::thread::Identity,
+          ElementD,
+          ElementD,
+          ElementsPerAccessD,
+          ElementAccumulator,
+          ElementCompute>;
+
+  using Gemm = cutlass::gemm::device::GemmUniversalWithAbsMax<
+      ElementA,
+      LayoutA,
+      ElementB,
+      LayoutB,
+      ElementC,
+      LayoutC,
+      ElementAccumulator,
+      cutlass::arch::OpClassTensorOp,
+      cutlass::arch::Sm89,
+      cutlass::gemm::GemmShape<128, 64, 128>,
+      cutlass::gemm::GemmShape<64, 32, 128>,
+      cutlass::gemm::GemmShape<16, 8, 32>,
+      EpilogueOutputOp,
+      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>,
+      3,
+      AlignmentA,
+      AlignmentB>;
+
+  typename Gemm::EpilogueOutputOp::Params::ActivationParams activation_params{
+      ElementCompute(1.0f),
+      ElementCompute(1.0f)};
+  typename Gemm::EpilogueOutputOp::Params epilogue_params{
+      activation_params,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr};
+
+  cutlass::gemm::GemmCoord problem_size((int)M, (int)N, (int)K);
+  typename Gemm::Arguments args{
+      cutlass::gemm::GemmUniversalMode::kGemm,
+      problem_size,
+      /*batch_count=*/1,
+      epilogue_params,
+      reinterpret_cast<ElementA const*>(A.data_ptr()),
+      reinterpret_cast<ElementB const*>(B_col.data_ptr()),
+      reinterpret_cast<ElementC const*>(C.data_ptr()),
+      reinterpret_cast<ElementD*>(D.data_ptr()),
+      nullptr,
+      nullptr,
+      M * K,
+      N * K,
+      M * N,
+      M * N,
+      0,
+      (int)K,
+      (int)K,
+      (int)N,
+      (int)N,
+      0};
+
+  Gemm gemm_op;
+  cutlass::Status status = gemm_op.can_implement(args);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "can_implement failed: ", cutlassGetStatusString(status));
+
+  size_t workspace_size = Gemm::get_workspace_size(args);
+  auto workspace = torch::empty(
+      {(long long)workspace_size},
+      torch::TensorOptions().dtype(torch::kUInt8).device(A.device()));
+
+  status = gemm_op.initialize(args, workspace.data_ptr());
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "initialize failed: ", cutlassGetStatusString(status));
+
+  status = gemm_op();
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "run failed: ", cutlassGetStatusString(status));
+
+  CHECK_CUDA(cudaGetLastError());
+  return D;
+}
+
+torch::Tensor mma_f8_ada_impl(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
+  auto a_type = A.scalar_type();
+  auto b_type = B_col.scalar_type();
+
+  if (a_type == torch::kFloat8_e5m2 && b_type == torch::kFloat8_e5m2) {
+    return mma_f8_ada_impl_typed<cutlass::float_e5m2_t, cutlass::float_e5m2_t>(A, B_col, C);
+  }
+  if (a_type == torch::kFloat8_e5m2 && b_type == torch::kFloat8_e4m3fn) {
+    return mma_f8_ada_impl_typed<cutlass::float_e5m2_t, cutlass::float_e4m3_t>(A, B_col, C);
+  }
+  if (a_type == torch::kFloat8_e4m3fn && b_type == torch::kFloat8_e5m2) {
+    return mma_f8_ada_impl_typed<cutlass::float_e4m3_t, cutlass::float_e5m2_t>(A, B_col, C);
+  }
+  if (a_type == torch::kFloat8_e4m3fn && b_type == torch::kFloat8_e4m3fn) {
+    return mma_f8_ada_impl_typed<cutlass::float_e4m3_t, cutlass::float_e4m3_t>(A, B_col, C);
+  }
+
+  TORCH_CHECK(
+      false,
+      "Unsupported input dtypes. Supported combinations are:\n"
+      "  (torch.float8_e5m2,   torch.float8_e5m2)\n"
+      "  (torch.float8_e5m2,   torch.float8_e4m3fn)\n"
+      "  (torch.float8_e4m3fn, torch.float8_e5m2)\n"
+      "  (torch.float8_e4m3fn, torch.float8_e4m3fn)"
+  );
+}
+#endif
+
 template <class ArchTag>
 torch::Tensor mma_f8_impl(torch::Tensor A, torch::Tensor B_col, torch::Tensor C) {
   auto a_type = A.scalar_type();
@@ -218,10 +388,17 @@ torch::Tensor cutlass_gemm_f8(torch::Tensor A, torch::Tensor B_col, torch::Tenso
       current_arch
   );
 
-#if TENSORREV_F8_ARCH_NUMBER >= 100
+#if TENSORREV_F8_ARCH_NUMBER >= 120
+  return mma_f8_impl<cutlass::arch::Sm120>(A, B_col, C);
+#elif TENSORREV_F8_ARCH_NUMBER >= 100
   return mma_f8_impl<cutlass::arch::Sm100>(A, B_col, C);
-#else
+#elif TENSORREV_F8_ARCH_NUMBER >= 90
   return mma_f8_impl<cutlass::arch::Sm90>(A, B_col, C);
+#elif TENSORREV_F8_ARCH_NUMBER == 89
+  return mma_f8_ada_impl(A, B_col, C);
+#else
+  TORCH_CHECK(false, "Unsupported FP8 build arch: sm_", TENSORREV_F8_ARCH_NUMBER);
+  return torch::Tensor();
 #endif
 }
 

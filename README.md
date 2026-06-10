@@ -19,7 +19,8 @@ The experiment driver selects the TensorRev architecture automatically from the 
 Optional for FP8 experiments:
 
 - a local CUTLASS checkout
-- GPU architecture `sm_90` or newer
+- GPU architecture `sm_89` or newer
+- CUDA toolkit 12.4 or newer for `sm_89` FP8 builds
 
 ## Repository Layout
 
@@ -43,7 +44,7 @@ make
 This builds the non-F8 extension path.
 Before compiling, the build checks that the target GPU architecture is at least `sm_70`.
 For `sm_70`/`sm_75`, the WMMA extension builds only the FP16 path; for `sm_80+`, it also builds BF16 and TF32 paths.
-If you run on Hopper or Blackwell without building the F8 extension, the experiment driver will automatically fall back to Ampere qualifiers.
+If you run on Ada, Hopper, or Blackwell without building the F8 extension, the experiment driver will automatically fall back to Ampere qualifiers.
 
 Optional FP8 build:
 
@@ -60,9 +61,9 @@ make f8
 
 - the target GPU architecture is at least `sm_70` for the WMMA extension
 - `CUTLASS_DIR` is configured correctly
-- the target GPU architecture is at least `sm_90`
+- the target GPU architecture is at least `sm_89`
 
-For F8 builds, TensorRev automatically promotes plain architecture targets such as `90`, `100`, and `110` to `90a`, `100a`, and `110a` in the generated `nvcc` `-gencode` flag. If you already specify an `a`-suffixed target explicitly, it is preserved as-is.
+For F8 builds, TensorRev keeps `89` as `sm_89` in the generated `nvcc` `-gencode` flag. Plain `sm_90+` architecture targets such as `90`, `100`, and `110` are promoted to `90a`, `100a`, and `110a`. If you already specify an `a`-suffixed `sm_90+` target explicitly, it is preserved as-is.
 
 ## Run
 
