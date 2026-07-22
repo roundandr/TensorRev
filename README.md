@@ -22,6 +22,15 @@ Optional for FP8 experiments:
 - GPU architecture `sm_89` or newer
 - CUDA toolkit 12.4 or newer for `sm_89` FP8 builds
 
+Optional for the standalone SM120 NVFP4/E0M3 reverse-engineering probe:
+
+- GPU architecture `sm_120a`
+- CUDA toolkit 13.0 or newer with `cuobjdump`
+
+The standalone SM120 C-path precision probe has the same requirements but
+does not depend on CUTLASS or a PyTorch CUDA extension built with the same
+toolkit version.
+
 ## Repository Layout
 
 - [tensorrev/](./tensorrev): consolidated Python source directory
@@ -82,6 +91,72 @@ The script will:
 
 ## Example Results: NVIDIA Blackwell
 
+### SM120 NVFP4 and hidden E0M3
+
+TensorRev includes a standalone SM120 probe for public NVFP4 E2M1 and the
+hidden E0M3 operand selectors. It characterizes the FP4 codebooks,
+accumulation precision, rounding, special values, SASS encoding, and
+throughput:
+
+```bash
+export CUDA_HOME=/usr/local/cuda-13.3
+bash hw/nv/run_sm120_nvfp4_probe.sh characterize
+bash hw/nv/run_sm120_nvfp4_probe.sh throughput
+```
+
+The probe compiles only the legal E2M1 PTX form and derives E0M3 executables
+by patching the complete compiler-generated OMMA instruction encodings. See
+[the RTX 5080 SM120 report](./docs/sm120_nvfp4_e0m3_report.md) for the method,
+results, limitations, and raw-data links.
+
+### SM120 C-path Accumulation Precision
+
+The direct C-path probe measures the effective fraction width with which an
+FP32 `C` fragment enters one PTX `mma.sync`. It covers FP16, BF16, TF32, and
+all four E4M3/E5M2 FP8 combinations without using the CUTLASS GEMM epilogue:
+
+```bash
+export CUDA_HOME=/usr/local/cuda-13.3
+make c-accum-probe
+bash hw/nv/run_sm120_c_accum_probe.sh all
+```
+
+For framework integration, build the probe and run only this experiment:
+
+```bash
+python run.py --experiment c-accum --result-dir /tmp/tensorrev-c-accum
+```
+
+The probe scans `(-1)_(A*B) + (+1)_(A*B) + (±2^-x)_C`, verifies the
+existing A/B 25-bit result through the same low-level instruction, and emits
+the exact PTX instruction, per-point FP32 bits, boundary summaries, SASS, and
+environment metadata. See [the RTX 5080 C-path report](./docs/sm120_c_accum_precision_report.md)
+for the complete seven-format results and raw-data links.
+
+### SM120 MMA Instruction Cycles
+
+The standalone cycle probe measures both dependent-chain latency and saturated
+per-SM issue interval for the SM120 Tensor Core instructions used above. It
+covers FP16, BF16, TF32, all four FP8 operand combinations, plain FP4, general
+and dedicated MXFP4, and NVFP4. Hidden E0M3 selectors run in isolated
+executables so an unsupported selector is recorded without aborting the rest
+of the matrix.
+
+```bash
+export CUDA_HOME=/usr/local/cuda-13.3
+make mma-cycle-probe
+bash hw/nv/run_sm120_mma_cycle_probe.sh smoke
+bash hw/nv/run_sm120_mma_cycle_probe.sh all
+```
+
+The research defaults use seven interleaved rounds, latency regressions over
+four repeat lengths, and a `warps × independent-chains` throughput sweep. Use
+`VARIANTS`, `ROUNDS`, `TRIALS`, `REPEATS`, `WARPS`, `CHAINS`, and `RESULT_DIR`
+to select a smaller experiment; `MAX_RETRIES` defaults to two for unstable
+results. The runner archives PTX, SASS, patch manifests, raw JSONL, Nsight
+Compute output when counters are available, and a generated
+[cycle report](./docs/sm120_mma_cycle_report.md).
+
 The following results were collected on:
 
 - GPU: `NVIDIA Thor`
@@ -139,3 +214,19 @@ starting from `t = 0` and increasing `t` until the output first deviates. The re
 
 - `NaN from 0 * inf`
 - `NaN from -inf + inf`
+
+## Citation
+
+If you use TensorRev in your research, please cite the MMA-Sim paper:
+
+```bibtex
+@misc{xie2025bitaccurate,
+  title        = {Bit-Accurate Modeling of GPU Matrix Multiply-Accumulate Units:
+                  Demystifying Numerical Discrepancy and Accuracy},
+  author       = {Peichen Xie and Shuotao Xu and Yang Wang and Fan Yang and Mao Yang},
+  year         = {2025},
+  publisher    = {arXiv},
+  doi          = {10.48550/arXiv.2511.10909},
+  url          = {https://arxiv.org/abs/2511.10909}
+}
+```
